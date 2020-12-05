@@ -34,7 +34,7 @@ enum ProceedIf {
 
 #[derive(Debug)]
 enum CommandParseError {
-    EmptyCommand
+    EmptyCommand,
 }
 
 #[derive(Debug, Clone)]
@@ -45,15 +45,22 @@ struct SimpleCommand {
 }
 
 impl SimpleCommand {
-    fn new(command_line: &Vec<String>, proceed_if: ProceedIf) -> Result<SimpleCommand, CommandParseError> {
+    fn new(
+        command_line: &Vec<String>,
+        proceed_if: ProceedIf,
+    ) -> Result<SimpleCommand, CommandParseError> {
         if command_line.len() == 0 {
-            return Err(CommandParseError::EmptyCommand)
+            return Err(CommandParseError::EmptyCommand);
         }
 
         let command = String::from(&command_line[0]);
-        let args = command_line.clone().into_iter().skip(1).collect::<Vec<String>>();
+        let args = command_line
+            .clone()
+            .into_iter()
+            .skip(1)
+            .collect::<Vec<String>>();
 
-        Ok (SimpleCommand {
+        Ok(SimpleCommand {
             command: command,
             args: args,
             proceed_if: proceed_if,
@@ -122,7 +129,7 @@ impl RebuildConfig {
             }
         }
 
-        Ok (RebuildConfig {
+        Ok(RebuildConfig {
             commands: commands,
             verbatim: verbatim,
         })
@@ -155,6 +162,11 @@ fn do_rebuild(config: RebuildConfig) {
 struct Opt {
     #[structopt(long = "verbatim", help = "Don't replace '{}' with changed filename")]
     verbatim: bool,
+    #[structopt(
+        long = "do-while",
+        help = "Executes command once before start watching"
+    )]
+    init: bool,
     #[structopt(name = "filename", help = "Filename to watch", required = true)]
     filename: String,
     #[structopt(
@@ -174,8 +186,13 @@ fn main() {
         Err(_) => {
             eprintln!("Syntax error: empty command isn't allowed");
             exit(1);
-        },
+        }
     };
+
+    if opt.init {
+        let path = PathBuf::from(&opt.filename);
+        do_rebuild(rebuild_config.set_filename(path));
+    }
 
     let (tx, rx) = channel();
 
