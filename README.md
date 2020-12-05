@@ -2,12 +2,30 @@
 
 This program watch a file and execute given command when the file updated.
 
-## Usage
+## Example
 
-Compile C file when modified.
+- Execute Python script when it modified.
 
 ```shell
-$ rebuild foo.c -- gcc -o foo foo.c
+$ rebuild foo.py python '{}'
+```
+
+- Compile TeX file when it modified.
+
+```shell
+$ rebuild foo.tex -- platex -halt-on-error '{}' '&&' dvipdfmx foo.dvi
+```
+
+- Compile C source code when it modified and do something on failure.
+
+```shell
+$ rebuild foo.c -- gcc -o foo foo.c '||' echo 'COMPILATION FAILURE'
+```
+
+- Do something before rebuild.
+
+```shell
+$ rebuild foo.c -- echo 'Start' \; gcc -o foo foo.c
 ```
 
 ## License
