@@ -21,7 +21,8 @@ extern crate structopt;
 use notify::{DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::PathBuf;
 use std::process::{exit, Command};
-use std::sync::mpsc::channel;
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::thread::{self, JoinHandle};
 use std::time::Duration;
 use structopt::StructOpt;
 
@@ -149,12 +150,43 @@ impl RebuildConfig {
     }
 }
 
-fn do_rebuild(config: RebuildConfig) {
+fn rebuild_sync(config: RebuildConfig) {
     for cmd in config.commands.iter() {
         if !cmd.execute() {
             break;
         }
     }
+}
+
+enum ThreadHandleMessage {
+    Handle(JoinHandle<()>),
+    Finish,
+}
+
+fn do_rebuild(
+    config: RebuildConfig,
+    run_async: bool,
+    thread_handle_sender: &Sender<ThreadHandleMessage>,
+) {
+    if run_async {
+        thread_handle_sender
+            .send(ThreadHandleMessage::Handle(thread::spawn(move || {
+                rebuild_sync(config)
+            })))
+            .unwrap();
+    } else {
+        rebuild_sync(config);
+    }
+}
+
+fn prepare_manager_thread(receiver: Receiver<ThreadHandleMessage>) -> JoinHandle<()> {
+    thread::spawn(move || loop {
+        match receiver.recv() {
+            Ok(ThreadHandleMessage::Handle(handle)) => handle.join().unwrap(),
+            Ok(ThreadHandleMessage::Finish) => break,
+            _ => (),
+        }
+    })
 }
 
 #[derive(StructOpt, Debug)]
@@ -167,6 +199,8 @@ struct Opt {
         help = "Executes command once before start watching"
     )]
     init: bool,
+    #[structopt(long = "async", help = "Runs command asynchronously")]
+    run_async: bool,
     #[structopt(name = "filename", help = "Filename to watch", required = true)]
     filename: String,
     #[structopt(
@@ -189,9 +223,12 @@ fn main() {
         }
     };
 
+    let (thread_tx, thread_rx) = channel();
+    let manager_join_handle = prepare_manager_thread(thread_rx);
+
     if opt.init {
         let path = PathBuf::from(&opt.filename);
-        do_rebuild(rebuild_config.set_filename(path));
+        do_rebuild(rebuild_config.set_filename(path), opt.run_async, &thread_tx);
     }
 
     let (tx, rx) = channel();
@@ -211,13 +248,18 @@ fn main() {
 
     loop {
         match rx.recv() {
-            Ok(DebouncedEvent::Write(path)) => do_rebuild(rebuild_config.set_filename(path)),
+            Ok(DebouncedEvent::Write(path)) => {
+                do_rebuild(rebuild_config.set_filename(path), opt.run_async, &thread_tx)
+            }
             Ok(DebouncedEvent::Remove(_)) => {
                 println!("Error: Target file removed; exiting...");
-                exit(1);
+                break;
             }
             Ok(_) => continue,
             Err(why) => eprintln!("Warning: Error watcing filesystem: {}", why),
         }
     }
+
+    thread_tx.send(ThreadHandleMessage::Finish).unwrap();
+    manager_join_handle.join().unwrap();
 }
