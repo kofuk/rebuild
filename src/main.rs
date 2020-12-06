@@ -18,11 +18,12 @@
 extern crate notify;
 extern crate structopt;
 
-use notify::{op, raw_watcher, RawEvent, RecursiveMode, Watcher};
+use notify::{DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::PathBuf;
 use std::process::{exit, Command};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::{self, JoinHandle};
+use std::time::Duration;
 use structopt::StructOpt;
 
 #[derive(Debug, Clone)]
@@ -232,7 +233,7 @@ fn main() {
 
     let (tx, rx) = channel();
 
-    let mut watcher = match raw_watcher(tx) {
+    let mut watcher = match RecommendedWatcher::new(tx, Duration::from_millis(500)) {
         Ok(watcher) => watcher,
         Err(why) => {
             eprintln!("Error: Failed to initialize watcher: {}", why);
@@ -247,18 +248,10 @@ fn main() {
 
     loop {
         match rx.recv() {
-            Ok(RawEvent {
-                path: Some(path),
-                op: Ok(op::WRITE),
-                cookie: _,
-            }) => {
+            Ok(DebouncedEvent::Write(path)) => {
                 do_rebuild(rebuild_config.set_filename(path), opt.run_async, &thread_tx);
             }
-            Ok(RawEvent {
-                path: _,
-                op: Ok(op::REMOVE),
-                cookie: _,
-            }) => {
+            Ok(DebouncedEvent::Remove(_)) => {
                 println!("Error: Target file removed; exiting...");
                 break;
             }
