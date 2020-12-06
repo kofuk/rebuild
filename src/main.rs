@@ -260,6 +260,9 @@ fn main() {
         }
     }
 
+    if opt.run_async {
+        println!("Waiting for commands to finish...");
+    }
     thread_tx.send(ThreadHandleMessage::Finish).unwrap();
     manager_join_handle.join().unwrap();
 }
