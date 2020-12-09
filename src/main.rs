@@ -47,24 +47,20 @@ struct SimpleCommand {
 
 impl SimpleCommand {
     fn new(
-        command_line: &Vec<String>,
+        command_line: &[String],
         proceed_if: ProceedIf,
     ) -> Result<SimpleCommand, CommandParseError> {
-        if command_line.len() == 0 {
+        if command_line.is_empty() {
             return Err(CommandParseError::EmptyCommand);
         }
 
         let command = String::from(&command_line[0]);
-        let args = command_line
-            .clone()
-            .into_iter()
-            .skip(1)
-            .collect::<Vec<String>>();
+        let args = command_line[1..command_line.len()].to_vec();
 
         Ok(SimpleCommand {
-            command: command,
-            args: args,
-            proceed_if: proceed_if,
+            command,
+            args,
+            proceed_if,
         })
     }
 
@@ -123,17 +119,14 @@ impl RebuildConfig {
                 single_command.push(arg.into())
             }
         }
-        if single_command.len() != 0 {
+        if !single_command.is_empty() {
             match SimpleCommand::new(&single_command, ProceedIf::Any) {
                 Ok(cmd) => commands.push(cmd),
                 Err(e) => return Err(e),
             }
         }
 
-        Ok(RebuildConfig {
-            commands: commands,
-            verbatim: verbatim,
-        })
+        Ok(RebuildConfig { commands, verbatim })
     }
 
     fn set_filename(&self, path: PathBuf) -> RebuildConfig {
